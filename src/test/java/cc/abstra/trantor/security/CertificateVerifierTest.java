@@ -6,24 +6,36 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.security.KeyStore;
+import java.security.cert.Certificate;
 import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 
 
 public class CertificateVerifierTest {
 
-    String filename = System.getProperty("java.home") + "/lib/security/cacerts".replace('/', File.separatorChar);
-    String password = "changeit";
-    Set<X509Certificate> additionalCerts = new HashSet<X509Certificate>();
+
+    Set<X509Certificate> caCertificates = new HashSet<X509Certificate>();
+    Certificate certificateToValidate;
 
     @Before
     public void setUp() throws Exception {
 
+        //TODO read files from test/resources
+        // TODO refactor to readInputCert()
+        InputStream inStream = new FileInputStream("/var/tmp/certificate.p12");
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(inStream, "secret".toCharArray());
+        String alias = ks.aliases().nextElement();
+        certificateToValidate = ks.getCertificate(alias);
+
+        //TODO refactor to readCACerts()
+        String filename = System.getProperty("java.home") + "/lib/security/cacerts".replace('/', File.separatorChar);
+        String password = "changeit";
         FileInputStream is = new FileInputStream(filename);
         KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
         keystore.load(is, password.toCharArray());
@@ -35,13 +47,13 @@ public class CertificateVerifierTest {
         for (TrustAnchor ta : params.getTrustAnchors()) {
             // Get certificate
             X509Certificate cert = ta.getTrustedCert();
-            additionalCerts.add(cert);
+            caCertificates.add(cert);
         }
     }
 
     @After
     public void tearDown() throws Exception {
-
+        CertificateVerifier.verifyCertificate((X509Certificate) certificateToValidate, caCertificates);
     }
 
     @Test
