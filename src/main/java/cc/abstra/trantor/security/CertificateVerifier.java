@@ -1,21 +1,9 @@
 package cc.abstra.trantor.security;
 
-import java.security.GeneralSecurityException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PublicKey;
-import java.security.SignatureException;
-import java.security.cert.CertPathBuilder;
-import java.security.cert.CertPathBuilderException;
-import java.security.cert.CertStore;
-import java.security.cert.CertificateException;
-import java.security.cert.CollectionCertStoreParameters;
-import java.security.cert.PKIXBuilderParameters;
-import java.security.cert.PKIXCertPathBuilderResult;
-import java.security.cert.TrustAnchor;
-import java.security.cert.X509CertSelector;
-import java.security.cert.X509Certificate;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
+import java.security.*;
+import java.security.cert.*;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -30,6 +18,10 @@ import java.util.Set;
  * @author Svetlin Nakov
  */
 public class CertificateVerifier {
+
+    static {
+        Security.addProvider(new BouncyCastleProvider());
+    }
 
     /**
      * Attempts to build a certification chain for given certificate and to verify
@@ -53,17 +45,20 @@ public class CertificateVerifier {
     public static PKIXCertPathBuilderResult verifyCertificate(X509Certificate cert,
                                                               Set<X509Certificate> additionalCerts)
             throws CertificateVerificationException {
+
         try {
+            if (hasExpired(cert)) {
+                throw new CertificateVerificationException("The certificate expired on: "+cert.getNotAfter());
+            }
             // Check for self-signed certificate
             if (isSelfSigned(cert)) {
-                throw new CertificateVerificationException(
-                        "The certificate is self-signed.");
+                throw new CertificateVerificationException("The certificate is self-signed.");
             }
 
             // Prepare a set of trusted root CA certificates
             // and a set of intermediate certificates
-            Set<X509Certificate> trustedRootCerts = new HashSet<X509Certificate>();
-            Set<X509Certificate> intermediateCerts = new HashSet<X509Certificate>();
+            Set<X509Certificate> trustedRootCerts = new HashSet<>();
+            Set<X509Certificate> intermediateCerts = new HashSet<>();
             for (X509Certificate additionalCert : additionalCerts) {
                 if (isSelfSigned(additionalCert)) {
                     trustedRootCerts.add(additionalCert);
@@ -76,6 +71,10 @@ public class CertificateVerifier {
 
             // The chain is built and verified. Return it as a result
             return verifyCertificate(cert, trustedRootCerts, intermediateCerts);
+        } catch (InvalidAlgorithmParameterException iapEx) {
+            throw new CertificateVerificationException(
+                    "No CA has been found: " +
+                            cert.getSubjectX500Principal(), iapEx);
         } catch (CertPathBuilderException certPathEx) {
             throw new CertificateVerificationException(
                     "Error building certification path: " +
@@ -87,6 +86,20 @@ public class CertificateVerifier {
                     "Error verifying the certificate: " +
                             cert.getSubjectX500Principal(), ex);
         }
+    }
+
+    /**
+     * Checks whether given X.509 certificate has expired.
+     */
+    public static boolean hasExpired(X509Certificate cert) {
+        try {
+            cert.checkValidity();
+        } catch (CertificateExpiredException e) {
+            return true;
+        } catch (CertificateNotYetValidException e) {
+            return false;
+        }
+        return false;
     }
 
     /**
@@ -129,25 +142,45 @@ public class CertificateVerifier {
         selector.setCertificate(cert);
 
         // Create the trust anchors (set of root CA certificates)
-        Set<TrustAnchor> trustAnchors = new HashSet<TrustAnchor>();
+        Set<TrustAnchor> trustAnchors = new HashSet<>();
+        Set<X509Certificate> intermediates = new HashSet<>();
         for (X509Certificate trustedRootCert : trustedRootCerts) {
-            trustAnchors.add(new TrustAnchor(trustedRootCert, null));
+            Principal foo = cert.getIssuerDN();
+            Principal bar = trustedRootCert.getSubjectDN();
+            if (foo.equals(bar)) {
+                trustAnchors.add(new TrustAnchor(trustedRootCert, null));
+            } else {
+                for (X509Certificate intermediateCert : intermediateCerts) {
+                    foo = intermediateCert.getIssuerDN();
+                    bar = trustedRootCert.getSubjectDN();
+                    if (foo.equals(bar)) {
+                        trustAnchors.add(new TrustAnchor(trustedRootCert, null));
+                        intermediates.add(intermediateCert);
+                    }
+                }
+            }
         }
 
         // Configure the PKIX certificate builder algorithm parameters
-        PKIXBuilderParameters pkixParams =
-                new PKIXBuilderParameters(trustAnchors, selector);
+        PKIXBuilderParameters pkixParams;
+        try {
+            pkixParams = new PKIXBuilderParameters(trustAnchors, selector);
+        } catch (InvalidAlgorithmParameterException ex) {
+            throw new InvalidAlgorithmParameterException("No root CA has been found for this certificate", ex);
+        }
 
         // Disable CRL checks (this is done manually as additional step)
         pkixParams.setRevocationEnabled(false);
 
         // Specify a list of intermediate certificates
+        intermediates.addAll(trustedRootCerts);
+        intermediates.add(cert);
         CertStore intermediateCertStore = CertStore.getInstance("Collection",
-                new CollectionCertStoreParameters(intermediateCerts), "BC");
+                new CollectionCertStoreParameters(intermediates), "BC");
         pkixParams.addCertStore(intermediateCertStore);
 
         // Build and verify the certification chain
-        CertPathBuilder builder = CertPathBuilder.getInstance("PKIX", "BC");
+        CertPathBuilder builder = CertPathBuilder.getInstance(CertPathBuilder.getDefaultType(), "BC");
         return (PKIXCertPathBuilderResult) builder.build(pkixParams);
     }
 
