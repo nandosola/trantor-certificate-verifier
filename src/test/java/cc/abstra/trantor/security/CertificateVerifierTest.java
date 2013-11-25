@@ -75,7 +75,8 @@ public class CertificateVerifierTest {
         CertificateVerifier.verifyCertificate((X509Certificate) testCertificate, systemCertificates);
     }
 
-    @Test
+    @Ignore("Pending: gotta get an expired cert")
+    @Test(expected = CertificateVerificationException.class)
     public void testVerifyCertificateWithExpiredCert() throws CertificateVerificationException {
         CertificateVerifier.verifyCertificate((X509Certificate) testCertificate, trustedCertificates);
     }
