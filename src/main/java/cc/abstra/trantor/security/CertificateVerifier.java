@@ -15,9 +15,15 @@ import java.util.Set;
  * root CA certificates and all other certificates in the set are intermediate
  * certificates.
  *
+ * The certificate to be validated does not necessarily have the
+ *
  * @author Svetlin Nakov
+ * @author Nando Sola
+ * @see <a href="http://www.nakov.com/blog/2009/12/01/x509-certificate-validation-in-java-build-and-verify-chain-and-verify-clr-with-bouncy-castle">X.509 Certificate Validation in Java: Build and Verify Chain and Verify CLR with Bouncy Castle</a>
+ * @see <a href="http://codeautomate.org/blog/2012/02/certificate-validation-using-java">X.509 Certificate Validation Using Java</a>
  */
 public class CertificateVerifier {
+    private final static String BOUNCY_CASTLE = "BC";
 
     static {
         Security.addProvider(new BouncyCastleProvider());
@@ -127,15 +133,17 @@ public class CertificateVerifier {
      * it. Relies on a set of root CA certificates (trust anchors) and a set of
      * intermediate certificates (to be used as part of the chain).
      * @param cert - certificate for validation
-     * @param trustedRootCerts - set of trusted root CA certificates
-     * @param intermediateCerts - set of intermediate certificates
+     * @param allTrustedRootCerts - set of trusted root CA certificates
+     * @param allIntermediateCerts - set of intermediate certificates
      * @return the certification chain (if verification is successful)
      * @throws GeneralSecurityException - if the verification is not successful
      * 		(e.g. certification path cannot be built or some certificate in the
      * 		chain is expired)
      */
-    private static PKIXCertPathBuilderResult verifyCertificate(X509Certificate cert, Set<X509Certificate> trustedRootCerts,
-                                                               Set<X509Certificate> intermediateCerts) throws GeneralSecurityException {
+    private static PKIXCertPathBuilderResult verifyCertificate(X509Certificate cert,
+                                                               Set<X509Certificate> allTrustedRootCerts,
+                                                               Set<X509Certificate> allIntermediateCerts)
+            throws GeneralSecurityException {
 
         // Create the selector that specifies the starting certificate
         X509CertSelector selector = new X509CertSelector();
@@ -143,22 +151,8 @@ public class CertificateVerifier {
 
         // Create the trust anchors (set of root CA certificates)
         Set<TrustAnchor> trustAnchors = new HashSet<>();
-        Set<X509Certificate> intermediates = new HashSet<>();
-        for (X509Certificate trustedRootCert : trustedRootCerts) {
-            Principal foo = cert.getIssuerDN();
-            Principal bar = trustedRootCert.getSubjectDN();
-            if (foo.equals(bar)) {
-                trustAnchors.add(new TrustAnchor(trustedRootCert, null));
-            } else {
-                for (X509Certificate intermediateCert : intermediateCerts) {
-                    foo = intermediateCert.getIssuerDN();
-                    bar = trustedRootCert.getSubjectDN();
-                    if (foo.equals(bar)) {
-                        trustAnchors.add(new TrustAnchor(trustedRootCert, null));
-                        intermediates.add(intermediateCert);
-                    }
-                }
-            }
+        for (X509Certificate trustedRootCert : allTrustedRootCerts) {
+            trustAnchors.add(new TrustAnchor(trustedRootCert, null));
         }
 
         // Configure the PKIX certificate builder algorithm parameters
@@ -172,16 +166,25 @@ public class CertificateVerifier {
         // Disable CRL checks (this is done manually as additional step)
         pkixParams.setRevocationEnabled(false);
 
-        // Specify a list of intermediate certificates
-        intermediates.addAll(trustedRootCerts);
-        intermediates.add(cert);
-        CertStore intermediateCertStore = CertStore.getInstance("Collection",
-                new CollectionCertStoreParameters(intermediates), "BC");
-        pkixParams.addCertStore(intermediateCertStore);
+        // Add all certs so that the chain can be constructed
+        pkixParams.addCertStore(createCertStore(cert));
+        pkixParams.addCertStore(createCertStore(allIntermediateCerts));
+        pkixParams.addCertStore(createCertStore(allTrustedRootCerts));
 
         // Build and verify the certification chain
-        CertPathBuilder builder = CertPathBuilder.getInstance(CertPathBuilder.getDefaultType(), "BC");
+        CertPathBuilder builder = CertPathBuilder.getInstance(CertPathBuilder.getDefaultType(), BOUNCY_CASTLE);
         return (PKIXCertPathBuilderResult) builder.build(pkixParams);
     }
 
+    private static CertStore createCertStore(X509Certificate certificate) throws InvalidAlgorithmParameterException,
+            NoSuchAlgorithmException, NoSuchProviderException {
+        Set<X509Certificate> certificateSet = new HashSet<>();
+        certificateSet.add(certificate);
+        return createCertStore(certificateSet);
+    }
+
+    private static CertStore createCertStore(Set<X509Certificate> certificateSet) throws InvalidAlgorithmParameterException,
+            NoSuchAlgorithmException, NoSuchProviderException {
+        return CertStore.getInstance("Collection", new CollectionCertStoreParameters(certificateSet), BOUNCY_CASTLE);
+    }
 }

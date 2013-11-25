@@ -30,7 +30,7 @@ public class CertificateVerifierTest {
     @Before
     public void setUp() throws Exception {
 
-        KeyStore trustedKeyStore = readCertStoreResource("test_cacerts.jks", "JKS", "secret");
+        KeyStore trustedKeyStore = readCertStoreResource("test_cacerts", "JKS", "changeit");
         // This class retrieves the most-trusted CAs from the keystore
         PKIXParameters params = new PKIXParameters(trustedKeyStore);
 
