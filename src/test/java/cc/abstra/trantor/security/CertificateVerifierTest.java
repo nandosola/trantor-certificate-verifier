@@ -66,6 +66,11 @@ public class CertificateVerifierTest {
     }
 
     @Test(expected = CertificateVerificationException.class)
+    public void testVerifyCertificateWithNullCert() throws CertificateVerificationException {
+        CertificateVerifier.verifyCertificate(null, trustedCertificates);
+    }
+
+    @Test(expected = CertificateVerificationException.class)
     public void testVerifyCertificateWithSelfSignedCert() throws CertificateVerificationException {
         CertificateVerifier.verifyCertificate((X509Certificate) selfSignedCertificate, trustedCertificates);
     }
@@ -94,8 +99,14 @@ public class CertificateVerifierTest {
 
     @Ignore("Pending: not implemented yet")
     @Test
-    public void VerifyCertificateWithCACrossSigning() throws Exception {
+    public void testVerifyCertificateWithCACrossSigning() throws Exception {
 
+    }
+
+    @Ignore("Pending: not implemented yet")
+    @Test
+    public void testVerifyRevokedCertificate() throws Exception {
+        //Implement OCSP queries
     }
 
     private KeyStore readCertStoreResource(String resourceName, String storeType, String storePassword)

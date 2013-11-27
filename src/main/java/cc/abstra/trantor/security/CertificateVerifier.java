@@ -53,13 +53,15 @@ public class CertificateVerifier {
             throws CertificateVerificationException {
 
         try {
-            if (hasExpired(cert)) {
+            if (null == cert)
+                throw new CertificateVerificationException("The certificate has no value. Please check your password");
+
+            if (hasExpired(cert))
                 throw new CertificateVerificationException("The certificate expired on: "+cert.getNotAfter());
-            }
+
             // Check for self-signed certificate
-            if (isSelfSigned(cert)) {
+            if (isSelfSigned(cert))
                 throw new CertificateVerificationException("The certificate is self-signed.");
-            }
 
             // Prepare a set of trusted root CA certificates
             // and a set of intermediate certificates
