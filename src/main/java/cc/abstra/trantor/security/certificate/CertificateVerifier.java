@@ -1,11 +1,20 @@
-package cc.abstra.trantor.security;
+package cc.abstra.trantor.security.certificate;
 
+import cc.abstra.trantor.security.APIConstants;
+import cc.abstra.trantor.security.certificate.crl.CRLVerifier;
+import cc.abstra.trantor.security.certificate.crl.exceptions.CRLAccessLocationException;
+import cc.abstra.trantor.security.certificate.exceptions.CertificateVerificationException;
+import cc.abstra.trantor.security.certificate.exceptions.UnknownTrustException;
+import cc.abstra.trantor.security.certificate.ocsp.OCSPVerifier;
+import cc.abstra.trantor.security.certificate.ocsp.exceptions.OCSPAccessLocationException;
+import cc.abstra.trantor.security.utils.Utils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.security.*;
 import java.security.cert.*;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Class for building a certification chain for given certificate and verifying
@@ -23,11 +32,15 @@ import java.util.Set;
  * @see <a href="http://codeautomate.org/blog/2012/02/certificate-validation-using-java">X.509 Certificate Validation Using Java</a>
  */
 public class CertificateVerifier {
-    private final static String BOUNCY_CASTLE = "BC";
+
+    //TODO verify that certificate is valid for signing purposes
 
     static {
-        Security.addProvider(new BouncyCastleProvider());
+        Utils.addBCProvider();
     }
+
+    private static final Logger LOG = Logger.getLogger(CertificateVerifier.class.getName());
+
 
     /**
      * Attempts to build a certification chain for given certificate and to verify
@@ -44,13 +57,26 @@ public class CertificateVerifier {
      * 		are considered to be trusted root CA certificates. All the rest are
      * 		considered to be intermediate CA certificates.
      * @return the certification chain (if verification is successful)
-     * @throws CertificateVerificationException - if the certification is not
+     * @throws cc.abstra.trantor.security.certificate.exceptions.CertificateVerificationException - if the certification is not
      * 		successful (e.g. certification path cannot be built or some
      * 		certificate in the chain is expired or CRL checks are failed)
      */
     public static PKIXCertPathBuilderResult verifyCertificate(X509Certificate cert,
                                                               Set<X509Certificate> additionalCerts)
-            throws CertificateVerificationException {
+            throws CertificateVerificationException, UnknownTrustException {
+
+        return verifyCertificate(cert, additionalCerts, false);
+    }
+
+    /**
+     * <code>verifyCertificate</code> overload for testing
+     *
+     * @param verifyOnlyCRL - use this arg for your integration tests
+     */
+    public static PKIXCertPathBuilderResult verifyCertificate(X509Certificate cert,
+                                                              Set<X509Certificate> additionalCerts,
+                                                              boolean verifyOnlyCRL)
+            throws CertificateVerificationException, UnknownTrustException {
 
         try {
             if (null == cert)
@@ -75,10 +101,23 @@ public class CertificateVerifier {
                 }
             }
 
-            // Attempt to build the certification chain and verify it
+            LOG.info("Attempting to build the certification chain and verify it");
+            PKIXCertPathBuilderResult verifiedCertChain = verifyCertificate(cert, trustedRootCerts, intermediateCerts);
+
+            if (verifyOnlyCRL) {
+                verifyCRL(cert, verifiedCertChain);
+            } else {
+                try {
+                    LOG.info("Trying to verify via OCSP");
+                    OCSPVerifier.verifyCertificate(verifiedCertChain);
+                } catch (OCSPAccessLocationException ocspEx) {
+                    LOG.warning("Certificate has no OCSP endpoints. Using CRL method");
+                    verifyCRL(cert, verifiedCertChain);
+                }
+            }
 
             // The chain is built and verified. Return it as a result
-            return verifyCertificate(cert, trustedRootCerts, intermediateCerts);
+            return verifiedCertChain;
         } catch (InvalidAlgorithmParameterException iapEx) {
             throw new CertificateVerificationException(
                     "No CA has been found: " +
@@ -90,9 +129,24 @@ public class CertificateVerifier {
         } catch (CertificateVerificationException cvex) {
             throw cvex;
         } catch (Exception ex) {
-            throw new CertificateVerificationException(
-                    "Error verifying the certificate: " +
-                            cert.getSubjectX500Principal(), ex);
+            if (ex instanceof UnknownTrustException) {
+                throw (UnknownTrustException)ex;
+            } else {
+                throw new CertificateVerificationException(
+                        "Error verifying the certificate: " +
+                                cert.getSubjectX500Principal(), ex);
+            }
+        }
+    }
+
+    private static void verifyCRL(X509Certificate cert, PKIXCertPathBuilderResult certPathBuilderResult)
+            throws CertificateVerificationException, UnknownTrustException {
+        try {
+            LOG.info("Verifying via CRL");
+            CRLVerifier.verifyCertificate(cert);
+        } catch (CRLAccessLocationException crlEx) {
+            LOG.warning("Couldn't find CRL distribution points either");
+            throw new UnknownTrustException("Cannot trust on this certificate chain", certPathBuilderResult);
         }
     }
 
@@ -174,7 +228,7 @@ public class CertificateVerifier {
         pkixParams.addCertStore(createCertStore(allTrustedRootCerts));
 
         // Build and verify the certification chain
-        CertPathBuilder builder = CertPathBuilder.getInstance(CertPathBuilder.getDefaultType(), BOUNCY_CASTLE);
+        CertPathBuilder builder = CertPathBuilder.getInstance(CertPathBuilder.getDefaultType(), APIConstants.PROVIDER_BC_NAME);
         return (PKIXCertPathBuilderResult) builder.build(pkixParams);
     }
 
@@ -187,6 +241,6 @@ public class CertificateVerifier {
 
     private static CertStore createCertStore(Set<X509Certificate> certificateSet) throws InvalidAlgorithmParameterException,
             NoSuchAlgorithmException, NoSuchProviderException {
-        return CertStore.getInstance("Collection", new CollectionCertStoreParameters(certificateSet), BOUNCY_CASTLE);
+        return CertStore.getInstance("Collection", new CollectionCertStoreParameters(certificateSet), APIConstants.PROVIDER_BC_NAME);
     }
 }

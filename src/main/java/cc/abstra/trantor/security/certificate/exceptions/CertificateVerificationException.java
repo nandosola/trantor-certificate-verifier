@@ -1,4 +1,4 @@
-package cc.abstra.trantor.security;
+package cc.abstra.trantor.security.certificate.exceptions;
 
 /**
  * This class wraps an exception that could be thrown during

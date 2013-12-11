@@ -21,7 +21,7 @@ Session.vim
 *~
 
 # IntelliJ
-.idea/
+.idea
 *.iml
 *.iws
 
@@ -32,6 +32,3 @@ nb-configuration.xml
 *.class
 target/
 .classpath
-target/*
-*.log
-
