@@ -12,6 +12,7 @@ import org.bouncycastle.asn1.x509.X509Extension;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.cert.*;
+import java.security.cert.Certificate;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -91,8 +92,10 @@ public class OCSPVerifier {
         try {
             DEROctetString oct = (DEROctetString) (new ASN1InputStream(new ByteArrayInputStream(
                     authInfoAccessExtensionValue)).readObject());
-            authorityInformationAccess = new AuthorityInformationAccess((ASN1Sequence) new ASN1InputStream(
-                    oct.getOctets()).readObject());
+
+            ASN1Sequence seq = ASN1Sequence.getInstance(ASN1Primitive.fromByteArray(oct.getOctets()));
+            authorityInformationAccess = AuthorityInformationAccess.getInstance(seq);
+
         } catch (IOException e) {
             throw new CertificateException("Found OCSP endpoint attrs, but couldn't read them. "+
                     "The cert might be corrupted or tampered with!");
@@ -110,7 +113,7 @@ public class OCSPVerifier {
                 LOG.fine("not a uniform resource identifier");
                 continue;
             }
-            DERIA5String str = (DERIA5String) ((DERTaggedObject) gn.getDERObject()).getObject();
+            DERIA5String str = (DERIA5String) ((DERTaggedObject) gn.toASN1Primitive()).getObject();
             String accessLocation = str.getString();
             LOG.fine("access location: " + accessLocation);
             return accessLocation;

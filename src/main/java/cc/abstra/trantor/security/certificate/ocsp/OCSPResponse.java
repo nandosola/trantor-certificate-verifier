@@ -19,6 +19,7 @@ package cc.abstra.trantor.security.certificate.ocsp;
 import cc.abstra.trantor.security.utils.Base64Coder;
 import cc.abstra.trantor.security.certificate.ocsp.exceptions.OCSPException;
 import cc.abstra.trantor.security.certificate.ocsp.exceptions.OCSPSignatureException;
+import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.ocsp.ResponderID;
@@ -197,13 +198,13 @@ public class OCSPResponse
 
 
 
-	public void setResponder(ResponderID responder) {
-        ASN1TaggedObject tagged = (ASN1TaggedObject)responder.toASN1Object();
+	public void setResponder(ResponderID responder) throws IOException {
+        ASN1TaggedObject tagged = (ASN1TaggedObject)responder.toASN1Primitive();
 		switch (tagged.getTagNo()) {
 			case 1:
 				valorResponder = X509Name.getInstance(tagged.getObject()).toString();
 				X509Principal certX509Principal = new X509Principal(valorResponder);
-				X500Principal cerX500Principal = new X500Principal(certX509Principal.getDEREncoded());
+				X500Principal cerX500Principal = new X500Principal(certX509Principal.getEncoded(ASN1Encoding.DER));
 				valorResponder = cerX500Principal.getName();
 				tipoResponder = IOCSPCertStatus.TYPE_RESPONDER.BY_NAME;
 				break;

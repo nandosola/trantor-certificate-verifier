@@ -5,7 +5,7 @@ import cc.abstra.trantor.security.certificate.crl.exceptions.CRLClientException;
 import cc.abstra.trantor.security.certificate.exceptions.CertificateVerificationException;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.DERIA5String;
-import org.bouncycastle.asn1.DERObject;
+import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.asn1.x509.X509Extension;
@@ -171,12 +171,12 @@ public class CRLVerifier {
         try {
             ASN1InputStream oAsnInStream = new ASN1InputStream(
                     new ByteArrayInputStream(crldpExt));
-            DERObject derObjCrlDP = oAsnInStream.readObject();
+            ASN1Primitive derObjCrlDP = oAsnInStream.readObject();
             DEROctetString dosCrlDP = (DEROctetString) derObjCrlDP;
             byte[] crldpExtOctets = dosCrlDP.getOctets();
             ASN1InputStream oAsnInStream2 = new ASN1InputStream(
                     new ByteArrayInputStream(crldpExtOctets));
-            DERObject derObj2 = oAsnInStream2.readObject();
+            ASN1Primitive derObj2 = oAsnInStream2.readObject();
             CRLDistPoint distPoint = CRLDistPoint.getInstance(derObj2);
 
             for (DistributionPoint dp : distPoint.getDistributionPoints()) {
