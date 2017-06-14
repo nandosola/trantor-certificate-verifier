@@ -25,13 +25,21 @@ import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.ocsp.ResponderID;
 import org.bouncycastle.asn1.x509.X509Name;
 import org.bouncycastle.jce.X509Principal;
-import org.bouncycastle.ocsp.BasicOCSPResp;
-import org.bouncycastle.ocsp.OCSPResp;
+import org.bouncycastle.operator.ContentVerifierProvider;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.ocsp.BasicOCSPResp;
+import org.bouncycastle.cert.ocsp.OCSPResp;
 
 import javax.security.auth.x500.X500Principal;
+
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.NoSuchProviderException;
 import java.security.PublicKey;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Date;
@@ -98,23 +106,31 @@ public class OCSPResponse
 	}
 
 	public X509Certificate[] getCertificates() throws OCSPException {
-		X509Certificate[] certs = null;
+		X509CertificateHolder[] certs = null;
     	byte[] resp = getRespuestaEncoded();
     	if (resp != null) {
     		try {
     			OCSPResp respuestaOCSP = new OCSPResp(resp);
     			BasicOCSPResp basicOcsp = (BasicOCSPResp)respuestaOCSP.getResponseObject();
     			if (basicOcsp != null)
-    				certs = basicOcsp.getCerts(PROVEEDOR_SUN);
+    				certs = basicOcsp.getCerts();
     		} catch (IOException ex) {
     			throw new OCSPException(ex);
-    		} catch (NoSuchProviderException ex) {
-    			throw new OCSPException(ex);
-    		} catch (org.bouncycastle.ocsp.OCSPException ex) {
+    		} catch (org.bouncycastle.cert.ocsp.OCSPException ex) {
     			throw new OCSPException(ex);
     		}
     	}
-    	return certs;
+    	X509Certificate[] certX509 = new X509Certificate[certs.length];
+    	for (int i=0; i< certs.length; i++) {
+    		CertificateFactory cert2_x;
+			try {
+				cert2_x = CertificateFactory.getInstance("X.509", "BC");
+				certX509[i] = (X509Certificate) cert2_x.generateCertificate(new ByteArrayInputStream(certs[i].getEncoded()));
+			} catch (CertificateException | NoSuchProviderException | IOException e) {
+				e.printStackTrace();
+			}
+    	}
+    	return certX509;
 	}
 
 
@@ -266,12 +282,17 @@ public class OCSPResponse
 			throw new OCSPException();
         try {
 			BasicOCSPResp respuestaBasica = (BasicOCSPResp)respuesta.getResponseObject();
-			if (!respuestaBasica.verify(pk, OCSPConstants.SUN_RSA_SIGN))
+			ContentVerifierProvider contentVerifierProvider = null;
+			try {
+				contentVerifierProvider = new JcaContentVerifierProviderBuilder().setProvider("BC")
+						.build(pk);
+			} catch (OperatorCreationException e1) {
+				e1.printStackTrace();	
+			}
+			if (!respuestaBasica.isSignatureValid(contentVerifierProvider))
 				throw new OCSPSignatureException();
-		} catch (org.bouncycastle.ocsp.OCSPException ex) {
+		} catch (org.bouncycastle.cert.ocsp.OCSPException ex) {
 			throw new OCSPException(ex.getMessage(), ex);
-		} catch (NoSuchProviderException ex) {
-			throw new OCSPSignatureException(ex.getMessage(), ex);
 		}
 	}
 

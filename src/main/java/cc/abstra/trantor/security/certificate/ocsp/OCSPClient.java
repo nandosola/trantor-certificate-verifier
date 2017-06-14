@@ -33,8 +33,18 @@ import org.apache.commons.httpclient.protocol.Protocol;
 import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ocsp.ResponderID;
-import org.bouncycastle.ocsp.*;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.bouncycastle.cert.ocsp.*;
+import org.bouncycastle.crypto.digests.SHA1Digest;
+import org.bouncycastle.crypto.digests.SHA256Digest;
+import org.bouncycastle.operator.DigestCalculator;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.bc.BcDigestCalculatorProvider;
+import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
@@ -42,7 +52,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 
@@ -82,15 +97,22 @@ public class OCSPClient {
 
     	OCSPResponse respuesta = new OCSPResponse();
 
-        OCSPReqGenerator generadorPeticion = new OCSPReqGenerator();
+    	OCSPReqBuilder generadorPeticion = new OCSPReqBuilder();
         OCSPReq peticionOCSP = null;
         OCSPResp OCSPResponse = null;
         CertificateID certificadoId = null;
                 
         try {
-            certificadoId = new CertificateID(CertificateID.HASH_SHA1, certificadoEmisor, certificadoUsuario.getSerialNumber());
+        	X509CertificateHolder holder = new X509CertificateHolder(certificadoEmisor.getEncoded());
+        	BcDigestCalculatorProvider calc = new BcDigestCalculatorProvider();
+        	ASN1ObjectIdentifier algOID = new ASN1ObjectIdentifier("1.3.14.3.2.26"); // SHA-1
+            AlgorithmIdentifier algorithm = new AlgorithmIdentifier(algOID);
+			certificadoId = new CertificateID(
+					new JcaDigestCalculatorProviderBuilder().build().get(CertificateID.HASH_SHA1),
+					new JcaX509CertificateHolder(certificadoEmisor),
+					certificadoUsuario.getSerialNumber());
             log.info(OCSPConstants.MENSAJE_CREADO_INDENTIFICADO);
-        } catch (OCSPException e) {
+        } catch (OCSPException | CertificateEncodingException | IOException | OperatorCreationException e) {
             log.info( OCSPConstants.MENSAJE_ERROR_GENERAR_IDENTIFICADOR + e.getMessage());
             throw new OCSPClientException(OCSPConstants.LIBRERIA_OCSP_ERROR_2 + OCSPConstants.DOS_PUNTOS_ESPACIO + e.getMessage());
         }
@@ -98,7 +120,7 @@ public class OCSPClient {
         generadorPeticion.addRequest(certificadoId);
 
         try {
-            peticionOCSP = generadorPeticion.generate();
+            peticionOCSP = generadorPeticion.build();
             log.info(OCSPConstants.MENSAJE_PETICION_OCSP_GENERADA);
         }
         catch (OCSPException e) {
@@ -239,23 +261,27 @@ public class OCSPClient {
             	log.info(OCSPConstants.MENSAJE_OCSP_SUCCESSFUL);
                 BasicOCSPResp respuestaBasica = (BasicOCSPResp)inResp.getResponseObject();
 				
-                try {
-                	X509Certificate certs[] = respuestaBasica.getCerts(OCSPConstants.SUN);
-                	if ((certs != null) && (certs.length > 0)) {
-                		ArrayList<X509Certificate> list = new ArrayList<X509Certificate>(certs.length);
-                		for (int i = 0; i < certs.length; i++)
-                			list.add(certs[i]);
-                		outResp.setOCSPSigner(list);
-                	}
-				} catch (NoSuchProviderException e) {
-					log.info(e.getMessage(), e);
-				} catch (OCSPException e) {
-					log.info(e.getMessage(), e);
+                X509CertificateHolder[] certs_ = respuestaBasica.getCerts(); 
+				X509Certificate[] certs = new X509Certificate[certs_.length];
+				for (int i=0; i< certs.length; i++) {
+					CertificateFactory cert2_x;
+					try {
+						cert2_x = CertificateFactory.getInstance("X.509", "BC");
+						certs[i] = (X509Certificate) cert2_x.generateCertificate(new ByteArrayInputStream(certs_[i].getEncoded()));
+					} catch (CertificateException | NoSuchProviderException | IOException e) {
+						e.printStackTrace();
+					}
+				}
+				if ((certs != null) && (certs.length > 0)) {
+					ArrayList<X509Certificate> list = new ArrayList<X509Certificate>(certs.length);
+					for (int i = 0; i < certs.length; i++)
+						list.add(certs[i]);
+					outResp.setOCSPSigner(list);
 				}
                 
                 SingleResp[] arrayRespuestaBasica = respuestaBasica.getResponses();
                 outResp.setTiempoRespuesta(respuestaBasica.getProducedAt());
-                ResponderID respID = respuestaBasica.getResponderId().toASN1Object();
+                ResponderID respID = respuestaBasica.getResponderId().toASN1Primitive();
                 outResp.setResponder(respID);
                 StringBuffer mensaje = new StringBuffer(OCSPConstants.MENSAJE_RECIBIDO_ESTADO_NO_DEFINIDO);
 

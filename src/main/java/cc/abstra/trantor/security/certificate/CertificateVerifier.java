@@ -28,6 +28,7 @@ import java.util.logging.Logger;
  *
  * @author Svetlin Nakov
  * @author Nando Sola
+ * @author Patrick Louis
  * @see <a href="http://www.nakov.com/blog/2009/12/01/x509-certificate-validation-in-java-build-and-verify-chain-and-verify-clr-with-bouncy-castle">X.509 Certificate Validation in Java: Build and Verify Chain and Verify CLR with Bouncy Castle</a>
  * @see <a href="http://codeautomate.org/blog/2012/02/certificate-validation-using-java">X.509 Certificate Validation Using Java</a>
  */
