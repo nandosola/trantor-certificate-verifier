@@ -51,6 +51,7 @@ public class OCSPVerifier {
                         certStatus.getStatus());
             }
         }
+        LOG.info("The certificate looks good!");
     }
 
     private static List<List<X509Certificate>> getCompleteCertChain(PKIXCertPathBuilderResult pkixCertPath)
